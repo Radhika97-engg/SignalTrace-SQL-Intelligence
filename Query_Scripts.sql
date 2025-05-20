@@ -87,6 +87,95 @@ FROM  (
       GROUP BY vehicle_id
       )AS avg_table
 )
+      
+--Query 7: Tag ECU Logs Based on RPM Behavior  
+--PROBLEM STATEMENT: Classify ECU log entries using RPM thresholds to indicate behavioral zones like Under-Idle, Normal Operation, and High Load.  
+--Helps in identifying engine anomalies (e.g., low idling) even when severity data is not available.  
+
+SELECT vehicle_id,
+       timestamp,
+       rpm,
+       CASE 
+           WHEN rpm IS NULL THEN 'Unknown'
+           WHEN CAST(rpm AS INTEGER) < 600 THEN 'Under-Idle'
+           WHEN CAST(rpm AS INTEGER) BETWEEN 600 AND 3000 THEN 'Normal'
+           WHEN CAST(rpm AS INTEGER) > 3000 THEN 'High Load'
+           ELSE 'Unknown'
+       END AS rpm_status
+FROM ecu_logs;
+
+
+--Query 8: Find Second-Most Faulty ECU  
+--PROBLEM STATEMENT: Retrieve the vehicle_id and fault count of the ECU that has the second-highest number of fault log entries in the ecu_logs table.  
+--This helps identify high-risk vehicles that are nearly as problematic as the top fault generator — often a priority in preventative maintenance strategies.  
+SELECT vehicle_id,
+       COUNT(*) AS fault_count
+FROM ecu_logs
+GROUP BY vehicle_id
+HAVING COUNT(*) < (
+SELECT MAX(fault_count)
+FROM(
+SELECT vehicle_id,
+       COUNT (fault_code) AS fault_count
+FROM ecu_logs
+GROUP BY  vehicle_id
+ORDER BY fault_count DESC
+) AS fault_counts
+)
+ORDER BY fault_count DESC
+LIMIT 1;
+
+--Query 8B: Vehicles with Fault Count Above the Fleet Median  
+--PROBLEM STATEMENT: Retrieve the vehicle_ids whose total number of fault logs is greater than the **median fault count** across all vehicles in the ecu_logs table.  
+--This approach avoids skewed results caused by outliers and helps identify the true "upper half" of high-activity or high-risk vehicles.  
+
+SELECT vehicle_id, COUNT(*) AS fault_count
+FROM ecu_logs
+GROUP BY vehicle_id
+HAVING COUNT(*) > (
+    SELECT fault_count
+    FROM (
+        SELECT vehicle_id,
+               COUNT(*) AS fault_count,
+               ROW_NUMBER() OVER (ORDER BY COUNT(*)) AS rn
+        FROM ecu_logs
+        GROUP BY vehicle_id
+    ) AS rows_ranked
+    WHERE rn = (
+        SELECT CAST((COUNT(DISTINCT vehicle_id)+1)/2 AS INTEGER)
+        FROM ecu_logs
+    )
+)
+ORDER BY fault_count DESC;
+
+--Query 9: Vehicles Missing ECU Log Data for More Than 2 Consecutive Days  
+--PROBLEM STATEMENT: Identify the vehicle_ids from the ecu_logs table that have not reported any log entries for periods longer than 3 consecutive days.  
+--This query helps flag inactive, disconnected, or potentially faulty ECUs that may be silently failing or offline, which is critical for ensuring continuous diagnostics and system reliability.  
+SELECT *
+FROM (
+    SELECT vehicle_id,
+       timestamp,
+       LAG(timestamp) OVER ( PARTITION BY vehicle_id ORDER BY timestamp) AS prev_timestamp
+    FROM ecu_logs
+    ) AS lagged_data
+WHERE JULIANDAY(timestamp)-JULIANDAY(prev_timestamp) > 2;
+
+
+--Query 10: ECUs Reporting Under Multiple Vehicle Profiles  
+--PROBLEM STATEMENT: Identify ECUs (e.g., based on ecu_id or ecu_serial) that are linked to more than one vehicle_id in the dataset.  
+--This query helps flag duplicate or misassigned ECUs which may indicate hardware reuse, logging configuration errors, or database mapping inconsistencies.  
+SELECT e.ecu_id,
+       COUNT(DISTINCT e.vehicle_id) AS vehicle_count
+FROM ecu_logs AS e
+JOIN vehicle_metadata AS v
+ON e.vehicle_id = v.vehicle_id
+GROUP BY ecu_id
+HAVING  vehicle_count > 1;
+
+
+
+
+
 
 
 

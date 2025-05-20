@@ -17,3 +17,10 @@
 - Project Mapping: Standalone analytical logic
 - Status: Done
 - Concepts: `IS NULL`
+
+### 4. Count Employees/Department
+- (https://leetcode.com/problems/the-number-of-employees-which-report-to-each-employee/)
+- Project Mapping: Query 5 – Count Faults by ECU Type or Vehicle Zone
+- Status: Done
+- Concepts: `GROUP BY`, `COUNT`
+
