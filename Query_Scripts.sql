@@ -172,6 +172,88 @@ ON e.vehicle_id = v.vehicle_id
 GROUP BY ecu_id
 HAVING  vehicle_count > 1;
 
+--Query 11: Rank ECUs by Daily Fault Bursts  
+--PROBLEM STATEMENT: For each calendar day, identify ECUs that generated fault logs and rank them by the total number of fault entries reported.  
+--This query helps flag ECUs exhibiting bursty or abnormal behavior during specific days, useful for spotting stress-induced failures, or hardware inconsistencies.  
+SELECT ecu_id,
+       DATE(timestamp) AS DATE,
+       COUNT(fault_code) AS fault_enteries,
+       RANK() OVER (
+              PARTITION BY DATE(timestamp)
+              ORDER BY COUNT(fault_code) DESC
+              ) AS daily_rank
+FROM ecu_logs
+GROUP BY ecu_id, DATE;
+
+
+--Query 12: Top 3 Faulty Logs Per Vehicle
+--PROBLEM STATEMENT: For each vehicle in the dataset, retrieve the three most recent fault log entries based on the timestamp field.
+--This query helps highlight the most recent diagnostic events per vehicle and is useful for identifying high-frequency fault patterns, monitoring system behavior, and triggering real-time alerts.
+
+SELECT *
+FROM (
+  SELECT vehicle_id,
+         timestamp,
+         fault_code,
+         ROW_NUMBER() OVER (
+           PARTITION BY vehicle_id
+           ORDER BY timestamp DESC
+         ) AS rank
+  FROM ecu_logs
+) AS ranked_logs
+WHERE rank <= 3;
+
+--Query 13: Detect Sudden RPM Drops in Time-Series Logs  
+--PROBLEM STATEMENT: For each vehicle in the ecu_logs table, detect instances where the current RPM has dropped significantly (e.g., more than 1000 units) compared to the previous entry.  
+--This query helps identify engine misfires, stalling conditions, or abnormal transitions in engine load, enabling proactive diagnostics and safety alerts.
+SELECT *
+FROM(
+SELECT vehicle_id,
+       rpm,
+       LAG(rpm) OVER (PARTITION BY vehicle_id ORDER BY timestamp) AS prev_rpm
+FROM ecu_logs) AS RPM_LAG
+WHERE prev_rpm - rpm > 1000;
+
+--Query 14: Root Cause Zones with CTE-Based Fault Tracing
+--PROBLEM STATEMENT: Using CTEs, trace all ECU fault logs back to vehicle zones and summarize which zones are most frequently associated with system faults. Helps prioritize investigations based on geographic or operational zone trends.
+WITH fault_logs_with_zone AS(
+        SELECT v.zone,
+        COUNT(e.fault_code) AS fault_count
+FROM ecu_logs AS e
+LEFT JOIN vehicle_metadata AS v
+ON e.vehicle_id = v.vehicle_id
+GROUP BY v.zone
+)
+SELECT *
+FROM fault_logs_with_zone 
+ORDER BY fault_count DESC;
+
+--Query 15: NULL Handling – Clean Null Values in Log Messages
+--PROBLEM STATEMENT: Clean and standardize NULL values in ECU log entries by replacing them with meaningful defaults (e.g., 'Unknown', 0, or 'Not Reported').
+--This ensures consistent reporting, prevents data loss in visualizations, and improves downstream diagnostic accuracy during log analysis.
+SELECT
+  log_id,
+  vehicle_id,
+  -- Replace fault_code NULLs
+  CASE WHEN fault_code IS NULL OR fault_code = '' THEN 'No Code' ELSE fault_code END AS cleaned_fault_code,
+  
+  -- Replace rpm NULLs
+  CASE WHEN rpm IS NULL OR rpm ='' THEN 0 ELSE rpm END AS cleaned_rpm,
+  
+  -- Replace temp NULLs
+  CASE WHEN temp IS NULL OR temp='' THEN 0  ELSE temp END AS cleaned_temp,
+  
+  -- Replace severity NULLs
+  CASE WHEN severity IS NULL OR severity ='' THEN 'Unknown' ELSE severity END AS cleaned_severity
+
+FROM ecu_logs;
+       
+
+
+
+
+
+
 
 
 
