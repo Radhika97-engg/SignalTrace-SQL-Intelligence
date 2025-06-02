@@ -60,3 +60,11 @@
 - Notes:
   > This query identifies repeated values by grouping on the email field and filtering using HAVING COUNT , It directly aligns with how we identify ECUs linked to multiple vehicle profiles, helping surface duplication or misconfiguration issues in both datasets.
 
+  ### 10. Rank Scores
+- (https://leetcode.com/problems/rank-scores/submissions/1650346555/)
+- Project Mapping: Query 11 – Rank ECUs by Daily Fault Bursts
+- Status: Done
+- Concepts: `RANK()`, `PARTITION BY`, `ORDER BY`
+- Notes:
+  > This query ranks ECU fault bursts per day, directly aligned with the concept of ranking scores in LeetCode.
+

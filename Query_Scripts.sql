@@ -108,6 +108,7 @@ FROM ecu_logs;
 --Query 8: Find Second-Most Faulty ECU  
 --PROBLEM STATEMENT: Retrieve the vehicle_id and fault count of the ECU that has the second-highest number of fault log entries in the ecu_logs table.  
 --This helps identify high-risk vehicles that are nearly as problematic as the top fault generator — often a priority in preventative maintenance strategies.  
+
 SELECT vehicle_id,
        COUNT(*) AS fault_count
 FROM ecu_logs
@@ -151,6 +152,7 @@ ORDER BY fault_count DESC;
 --Query 9: Vehicles Missing ECU Log Data for More Than 2 Consecutive Days  
 --PROBLEM STATEMENT: Identify the vehicle_ids from the ecu_logs table that have not reported any log entries for periods longer than 3 consecutive days.  
 --This query helps flag inactive, disconnected, or potentially faulty ECUs that may be silently failing or offline, which is critical for ensuring continuous diagnostics and system reliability.  
+
 SELECT *
 FROM (
     SELECT vehicle_id,
@@ -164,6 +166,7 @@ WHERE JULIANDAY(timestamp)-JULIANDAY(prev_timestamp) > 2;
 --Query 10: ECUs Reporting Under Multiple Vehicle Profiles  
 --PROBLEM STATEMENT: Identify ECUs (e.g., based on ecu_id or ecu_serial) that are linked to more than one vehicle_id in the dataset.  
 --This query helps flag duplicate or misassigned ECUs which may indicate hardware reuse, logging configuration errors, or database mapping inconsistencies.  
+
 SELECT e.ecu_id,
        COUNT(DISTINCT e.vehicle_id) AS vehicle_count
 FROM ecu_logs AS e
@@ -175,6 +178,7 @@ HAVING  vehicle_count > 1;
 --Query 11: Rank ECUs by Daily Fault Bursts  
 --PROBLEM STATEMENT: For each calendar day, identify ECUs that generated fault logs and rank them by the total number of fault entries reported.  
 --This query helps flag ECUs exhibiting bursty or abnormal behavior during specific days, useful for spotting stress-induced failures, or hardware inconsistencies.  
+
 SELECT ecu_id,
        DATE(timestamp) AS DATE,
        COUNT(fault_code) AS fault_enteries,
@@ -206,6 +210,7 @@ WHERE rank <= 3;
 --Query 13: Detect Sudden RPM Drops in Time-Series Logs  
 --PROBLEM STATEMENT: For each vehicle in the ecu_logs table, detect instances where the current RPM has dropped significantly (e.g., more than 1000 units) compared to the previous entry.  
 --This query helps identify engine misfires, stalling conditions, or abnormal transitions in engine load, enabling proactive diagnostics and safety alerts.
+
 SELECT *
 FROM(
 SELECT vehicle_id,
@@ -216,6 +221,7 @@ WHERE prev_rpm - rpm > 1000;
 
 --Query 14: Root Cause Zones with CTE-Based Fault Tracing
 --PROBLEM STATEMENT: Using CTEs, trace all ECU fault logs back to vehicle zones and summarize which zones are most frequently associated with system faults. Helps prioritize investigations based on geographic or operational zone trends.
+
 WITH fault_logs_with_zone AS(
         SELECT v.zone,
         COUNT(e.fault_code) AS fault_count
@@ -231,6 +237,7 @@ ORDER BY fault_count DESC;
 --Query 15: NULL Handling – Clean Null Values in Log Messages
 --PROBLEM STATEMENT: Clean and standardize NULL values in ECU log entries by replacing them with meaningful defaults (e.g., 'Unknown', 0, or 'Not Reported').
 --This ensures consistent reporting, prevents data loss in visualizations, and improves downstream diagnostic accuracy during log analysis.
+
 SELECT
   log_id,
   vehicle_id,
@@ -247,7 +254,29 @@ SELECT
   CASE WHEN severity IS NULL OR severity ='' THEN 'Unknown' ELSE severity END AS cleaned_severity
 
 FROM ecu_logs;
-       
+
+
+-- Query 16: Rolling Average RPM Spike Detector
+-- PROBLEM STATEMENT:
+-- Identify ECU entries where the current RPM is more than 20% higher than the rolling average of the last 5 readings for the same vehicle. 
+--This helps detect unusual engine spikes that may indicate system stress, misfiring, or erratic load behavior.
+
+SELECT *
+FROM ( 
+       SELECT ecu_id,
+              timestamp,
+              vehicle_id,
+              rpm,
+       ROUND(AVG(rpm) OVER (
+       PARTITION BY vehicle_id
+       ORDER BY timestamp
+       ROWS BETWEEN 4 PRECEDING AND CURRENT ROW
+       ),2) AS rolling_avg
+FROM ecu_logs)AS rolling_table
+WHERE rpm > 1.2 * rolling_avg
+ORDER BY vehicle_id, timestamp;
+
+
 
 
 
